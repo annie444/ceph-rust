@@ -1,4 +1,4 @@
-FROM buildpack-deps:trixie
+FROM docker.io/library/buildpack-deps:bookworm
 
 ENV RUSTUP_HOME="/usr/local/rustup" \
     CARGO_HOME="/usr/local/cargo" \
@@ -8,11 +8,11 @@ ENV RUSTUP_HOME="/usr/local/rustup" \
 RUN set -eux; \
     dpkgArch="$(dpkg --print-architecture)"; \
     case "${dpkgArch##*-}" in \
-        amd64) rustArch='x86_64-unknown-linux-gnu';; \
-        armhf) rustArch='armv7-unknown-linux-gnueabihf';; \
-        arm64) rustArch='aarch64-unknown-linux-gnu';; \
-        i386) rustArch='i686-unknown-linux-gnu';; \
-        *) echo >&2 "unsupported architecture: ${dpkgArch}"; exit 1 ;; \
+    amd64) rustArch='x86_64-unknown-linux-gnu';; \
+    armhf) rustArch='armv7-unknown-linux-gnueabihf';; \
+    arm64) rustArch='aarch64-unknown-linux-gnu';; \
+    i386) rustArch='i686-unknown-linux-gnu';; \
+    *) echo >&2 "unsupported architecture: ${dpkgArch}"; exit 1 ;; \
     esac; \
     url="https://static.rust-lang.org/rustup/archive/1.28.2/${rustArch}/rustup-init"; \
     wget --progress=dot:giga "$url"; \
@@ -29,21 +29,19 @@ RUN set -eux; \
 
 RUN apt-get update \
     && apt-get install apt-transport-https \
-    && wget -q -O- 'https://download.ceph.com/keys/release.asc' | apt-key add - \
-    && echo "deb https://download.ceph.com/debian-tentacle/ trixie main" > /etc/apt/sources.list.d/ceph.list \
+    && wget -q -O- 'https://download.ceph.com/keys/release.asc' | tee /etc/apt/trusted.gpg.d/ceph.asc \
+    && echo "deb https://download.ceph.com/debian-tentacle/ bookworm main" > /etc/apt/sources.list.d/ceph.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-        uuid-runtime \
-        ceph-mgr ceph-mon ceph-osd ceph-mds \
-        librados-dev libradosstriper-dev
+    uuid-runtime \
+    ceph-mgr ceph-mon ceph-osd ceph-mds \
+    librados-dev libradosstriper-dev
 
 # update crates.io index
 RUN cargo search --limit 1
 
 WORKDIR /ceph-rust
 
-COPY micro-osd.sh /
-COPY setup-micro-osd.sh /
-COPY entrypoint.sh /
+COPY micro-osd.sh setup-micro-osd.sh entrypoint.sh /
 
-CMD /entrypoint.sh
+CMD ["/entrypoint.sh"]
