@@ -22,19 +22,19 @@ DIR=${1}
 
 # reset
 pkill ceph || true
-rm -rf ${DIR}/*
+rm -rf "$DIR"/*
 LOG_DIR=${DIR}/log
 MON_DATA=${DIR}/mon
 MDS_DATA=${DIR}/mds
 MOUNTPT=${MDS_DATA}/mnt
 OSD_DATA=${DIR}/osd
-mkdir ${LOG_DIR} ${MON_DATA} ${OSD_DATA} ${MDS_DATA} ${MOUNTPT}
+mkdir "$LOG_DIR" "$MON_DATA" "$OSD_DATA" "$MDS_DATA" "$MOUNTPT"
 MDS_NAME="Z"
 MON_NAME="a"
 MGR_NAME="x"
 
 # cluster wide parameters
-cat >> ${DIR}/ceph.conf <<EOF
+cat >> "$DIR"/ceph.conf <<EOF
 [global]
 fsid = $(uuidgen)
 osd crush chooseleaf type = 0
@@ -69,27 +69,27 @@ EOF
 export CEPH_CONF=${DIR}/ceph.conf
 
 # start an osd
-ceph-mon --id ${MON_NAME} --mkfs --keyring /dev/null
-touch ${MON_DATA}/keyring
-ceph-mon --id ${MON_NAME}
+ceph-mon --id "$MON_NAME" --mkfs --keyring /dev/null
+touch "$MON_DATA"/keyring
+ceph-mon --id "$MON_NAME"
 
 # start an osd
 OSD_ID=$(ceph osd create)
-ceph osd crush add osd.${OSD_ID} 1 root=default host=localhost
-ceph-osd --id ${OSD_ID} --mkjournal --mkfs
-ceph-osd --id ${OSD_ID}
+ceph osd crush add osd."$OSD_ID" 1 root=default host=localhost
+ceph-osd --id "$OSD_ID" --mkjournal --mkfs
+ceph-osd --id "$OSD_ID"
 
 # start a manager
-ceph-mgr --id ${MGR_NAME}
+ceph-mgr --id "$MGR_NAME"
 
 # test the setup
 ceph --version
 ceph status
 test_pool=$(uuidgen)
 temp_file=$(mktemp)
-ceph osd pool create ${test_pool} 0
-rados --pool ${test_pool} put group /etc/group
-rados --pool ${test_pool} get group ${temp_file}
-diff /etc/group ${temp_file}
-ceph osd pool delete ${test_pool} ${test_pool} --yes-i-really-really-mean-it
-rm ${temp_file}
+ceph osd pool create "$test_pool" 0
+rados --pool "$test_pool" put group /etc/group
+rados --pool "$test_pool" get group "$temp_file"
+diff /etc/group "$temp_file"
+ceph osd pool delete "$test_pool" "$test_pool" --yes-i-really-really-mean-it
+rm "$temp_file"

@@ -14,13 +14,15 @@
 
 #![cfg(unix)]
 
-use byteorder::{BigEndian, ReadBytesExt};
-
-use crate::error::{RadosError, RadosResult};
 use std::io::{Cursor, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::str;
+
+use byteorder::{BigEndian, ReadBytesExt};
+use serde_json::json;
+
+use crate::error::{RadosError, RadosResult};
 
 /// This is a helper function that builds a raw command from the actual
 /// command. You just pass

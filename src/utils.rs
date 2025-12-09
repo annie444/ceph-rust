@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::io::Result;
-
 use std::process::{Command, Output};
 
 /// run_cli - pass in a String of a normal command line
@@ -27,7 +26,6 @@ use std::process::{Command, Output};
 /// use ceph::utils::run_cli;
 /// run_cli("ps aux");
 /// ```
-
 // NOTE: Add Into so a "" can also be passed in...
 pub fn run_cli(cmd_line: &str) -> Result<Output> {
     let output = Command::new("sh").arg("-c").arg(cmd_line).output()?;

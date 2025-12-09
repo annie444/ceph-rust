@@ -49,21 +49,6 @@
 //!
 //! See the /examples/ceph.rs for how to use the library.
 
-#[macro_use]
-extern crate bitflags;
-extern crate byteorder;
-extern crate libc;
-#[macro_use]
-extern crate tracing;
-#[macro_use]
-extern crate nom;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-#[macro_use]
-extern crate serde_json;
-extern crate uuid;
-
 pub mod admin_sockets;
 pub mod ceph;
 pub mod ceph_volume;

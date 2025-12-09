@@ -14,38 +14,28 @@
 #![cfg(unix)]
 #![allow(unused_imports)]
 
-use crate::JsonData;
+use std::ffi::{CStr, CString};
+use std::io::{BufRead, Cursor};
+use std::marker::PhantomData;
+use std::net::IpAddr;
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{ptr, str};
 
-use crate::admin_sockets::*;
-use crate::error::*;
-use crate::json::*;
-use crate::JsonValue;
 use byteorder::{LittleEndian, WriteBytesExt};
 use libc::*;
-use nom::number::complete::le_u32;
-use nom::IResult;
-use serde_json;
+use tracing::debug;
+use uuid::Uuid;
 
+use crate::admin_sockets::*;
+use crate::error::{RadosError, RadosResult};
+use crate::json::*;
 use crate::rados::*;
 #[cfg(feature = "rados_striper")]
 use crate::rados_striper::*;
 use crate::status::*;
-use std::ffi::{CStr, CString};
-use std::marker::PhantomData;
-use std::sync::Arc;
-use std::{ptr, str};
-
 use crate::utils::*;
-use std::io::{BufRead, Cursor};
-use std::net::IpAddr;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-use uuid::Uuid;
-
-const CEPH_OSD_TMAP_HDR: char = 'h';
-const CEPH_OSD_TMAP_SET: char = 's';
-const CEPH_OSD_TMAP_CREATE: char = 'c';
-const CEPH_OSD_TMAP_RM: char = 'r';
+use crate::{JsonData, JsonValue};
 
 #[derive(Debug, Clone)]
 pub enum CephHealth {
@@ -61,113 +51,6 @@ pub enum CephCommandTypes {
     Pgs,
 }
 
-named!(
-    parse_header<TmapOperation>,
-    do_parse!(
-        char!(CEPH_OSD_TMAP_HDR)
-            >> data_len: le_u32
-            >> data: take!(data_len)
-            >> (TmapOperation::Header {
-                data: data.to_vec()
-            })
-    )
-);
-
-named!(
-    parse_create<TmapOperation>,
-    do_parse!(
-        char!(CEPH_OSD_TMAP_CREATE)
-            >> key_name_len: le_u32
-            >> key_name: take_str!(key_name_len)
-            >> data_len: le_u32
-            >> data: take!(data_len)
-            >> (TmapOperation::Create {
-                name: key_name.to_string(),
-                data: data.to_vec(),
-            })
-    )
-);
-
-named!(
-    parse_set<TmapOperation>,
-    do_parse!(
-        char!(CEPH_OSD_TMAP_SET)
-            >> key_name_len: le_u32
-            >> key_name: take_str!(key_name_len)
-            >> data_len: le_u32
-            >> data: take!(data_len)
-            >> (TmapOperation::Set {
-                key: key_name.to_string(),
-                data: data.to_vec(),
-            })
-    )
-);
-
-named!(
-    parse_remove<TmapOperation>,
-    do_parse!(
-        char!(CEPH_OSD_TMAP_RM)
-            >> key_name_len: le_u32
-            >> key_name: take_str!(key_name_len)
-            >> (TmapOperation::Remove {
-                name: key_name.to_string(),
-            })
-    )
-);
-
-#[derive(Debug)]
-pub enum TmapOperation {
-    Header { data: Vec<u8> },
-    Set { key: String, data: Vec<u8> },
-    Create { name: String, data: Vec<u8> },
-    Remove { name: String },
-}
-
-impl TmapOperation {
-    fn serialize(&self) -> RadosResult<Vec<u8>> {
-        let mut buffer: Vec<u8> = Vec::new();
-        match *self {
-            TmapOperation::Header { ref data } => {
-                buffer.push(CEPH_OSD_TMAP_HDR as u8);
-                buffer.write_u32::<LittleEndian>(data.len() as u32)?;
-                buffer.extend_from_slice(data);
-            }
-            TmapOperation::Set { ref key, ref data } => {
-                buffer.push(CEPH_OSD_TMAP_SET as u8);
-                buffer.write_u32::<LittleEndian>(key.len() as u32)?;
-                buffer.extend(key.as_bytes());
-                buffer.write_u32::<LittleEndian>(data.len() as u32)?;
-                buffer.extend_from_slice(data);
-            }
-            TmapOperation::Create { ref name, ref data } => {
-                buffer.push(CEPH_OSD_TMAP_CREATE as u8);
-                buffer.write_u32::<LittleEndian>(name.len() as u32)?;
-                buffer.extend(name.as_bytes());
-                buffer.write_u32::<LittleEndian>(data.len() as u32)?;
-                buffer.extend_from_slice(data);
-            }
-            TmapOperation::Remove { ref name } => {
-                buffer.push(CEPH_OSD_TMAP_RM as u8);
-                buffer.write_u32::<LittleEndian>(name.len() as u32)?;
-                buffer.extend(name.as_bytes());
-            }
-        }
-        Ok(buffer)
-    }
-
-    fn deserialize(input: &[u8]) -> IResult<&[u8], Vec<TmapOperation>> {
-        many0!(
-            input,
-            alt!(
-                complete!(parse_header)
-                    | complete!(parse_create)
-                    | complete!(parse_set)
-                    | complete!(parse_remove)
-            )
-        )
-    }
-}
-
 /// Helper to iterate over pool objects
 #[derive(Debug)]
 pub struct Pool {
@@ -179,6 +62,138 @@ pub struct CephObject {
     pub name: String,
     pub entry_locator: String,
     pub namespace: String,
+}
+
+// Structure of the reply from rados_notify2
+// le32 num_acks
+// {
+//   le64 gid     global id for the client (for client.1234 that's 1234)
+//   le64 cookie  cookie for the client
+//   le32 buflen  length of reply message buffer
+//   u8 * buflen  payload
+// } * num_acks
+// le32 num_timeouts
+// {
+//   le64 gid     global id for the client
+//   le64 cookie  cookie for the client
+// } * num_timeouts
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct ClientAck {
+    pub gid: u64,
+    pub cookie: u64,
+    pub buflen: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct ClientTimeout {
+    pub gid: u64,
+    pub cookie: u64,
+}
+
+#[derive(Debug)]
+pub struct NotifyResponse {
+    pub acks: Vec<(ClientAck, Vec<u8>)>,
+    pub timeouts: Vec<ClientTimeout>,
+}
+
+impl NotifyResponse {
+    /// Parse the response from a raw buffer
+    pub fn parse_from_slice(data: &[u8]) -> RadosResult<Self> {
+        let mut offset = 0;
+
+        // Read num_acks (le32)
+        let num_acks = read_le32(data, &mut offset)?;
+
+        let mut acks = Vec::with_capacity(num_acks as usize);
+
+        // Parse each ack
+        for _ in 0..num_acks {
+            let gid = read_le64(data, &mut offset)?;
+            let cookie = read_le64(data, &mut offset)?;
+            let buflen = read_le32(data, &mut offset)?;
+
+            let ack = ClientAck {
+                gid,
+                cookie,
+                buflen,
+            };
+
+            // Read the payload buffer
+            let buffer = if buflen > 0 {
+                check_bounds(data, offset, buflen as usize)?;
+                let payload = data[offset..offset + buflen as usize].to_vec();
+                offset += buflen as usize;
+                payload
+            } else {
+                Vec::new()
+            };
+
+            acks.push((ack, buffer));
+        }
+
+        // Read num_timeouts (le32)
+        let num_timeouts = read_le32(data, &mut offset)?;
+
+        let mut timeouts = Vec::with_capacity(num_timeouts as usize);
+
+        // Parse each timeout
+        for _ in 0..num_timeouts {
+            let gid = read_le64(data, &mut offset)?;
+            let cookie = read_le64(data, &mut offset)?;
+
+            timeouts.push(ClientTimeout { gid, cookie });
+        }
+
+        Ok(Self { acks, timeouts })
+    }
+
+    /// Parse from raw pointer and length (FFI wrapper)
+    /// # Safety
+    /// The caller must ensure that `ptr` is valid for `len` bytes.
+    pub unsafe fn parse_from_ptr(ptr: *const u8, len: usize) -> RadosResult<Self> {
+        if ptr.is_null() {
+            return Err(RadosError::Parse("Null pointer".to_string()));
+        }
+
+        let data = unsafe { std::slice::from_raw_parts(ptr, len) };
+        Self::parse_from_slice(data)
+    }
+}
+
+// Helper functions with bounds checking
+fn check_bounds(data: &[u8], offset: usize, size: usize) -> RadosResult<()> {
+    if offset + size > data.len() {
+        Err(RadosError::IoError(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            format!(
+                "Buffer overflow: trying to read {} bytes at offset {} but buffer is {} bytes",
+                size,
+                offset,
+                data.len()
+            ),
+        )))
+    } else {
+        Ok(())
+    }
+}
+
+fn read_le32(data: &[u8], offset: &mut usize) -> RadosResult<u32> {
+    check_bounds(data, *offset, 4)?;
+    let bytes = &data[*offset..*offset + 4];
+    *offset += 4;
+    Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
+
+fn read_le64(data: &[u8], offset: &mut usize) -> RadosResult<u64> {
+    check_bounds(data, *offset, 8)?;
+    let bytes = &data[*offset..*offset + 8];
+    *offset += 8;
+    Ok(u64::from_le_bytes([
+        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+    ]))
 }
 
 impl Iterator for Pool {
@@ -474,12 +489,10 @@ impl Rados {
             if ret_code < 0 {
                 return Err(ret_code.into());
             }
-            // Ceph doesn't return how many bytes were written
-            buffer.set_len(5120);
-            // We need to search for the first NUL byte
-            let num_bytes = buffer.iter().position(|x| x == &0u8);
-            buffer.set_len(num_bytes.unwrap_or(0));
-            Ok(String::from_utf8_lossy(&buffer).into_owned())
+
+            Ok(CStr::from_ptr(buffer.as_ptr() as *const c_char)
+                .to_string_lossy()
+                .into_owned())
         }
     }
 
@@ -563,29 +576,6 @@ impl IoCtx {
         }
     }
 
-    pub fn rados_pool_set_auid(&self, auid: u64) -> RadosResult<()> {
-        self.ioctx_guard()?;
-        unsafe {
-            let ret_code = rados_ioctx_pool_set_auid(self.ioctx, auid);
-            if ret_code < 0 {
-                return Err(ret_code.into());
-            }
-            Ok(())
-        }
-    }
-
-    pub fn rados_pool_get_auid(&self) -> RadosResult<u64> {
-        self.ioctx_guard()?;
-        let mut auid: u64 = 0;
-        unsafe {
-            let ret_code = rados_ioctx_pool_get_auid(self.ioctx, &mut auid);
-            if ret_code < 0 {
-                return Err(ret_code.into());
-            }
-            Ok(auid)
-        }
-    }
-
     /// Test whether the specified pool requires alignment or not.
     pub fn rados_pool_requires_alignment(&self) -> RadosResult<bool> {
         self.ioctx_guard()?;
@@ -594,20 +584,7 @@ impl IoCtx {
             if ret_code < 0 {
                 return Err(ret_code.into());
             }
-            if ret_code == 0 {
-                Ok(false)
-            } else {
-                Ok(true)
-            }
-        }
-    }
-
-    /// Get the alignment flavor of a pool
-    pub fn rados_pool_required_alignment(&self) -> RadosResult<u64> {
-        self.ioctx_guard()?;
-        unsafe {
-            let ret_code = rados_ioctx_pool_required_alignment(self.ioctx);
-            Ok(ret_code)
+            if ret_code == 0 { Ok(false) } else { Ok(true) }
         }
     }
 
@@ -634,8 +611,7 @@ impl IoCtx {
             );
             if ret_code == -ERANGE {
                 // Buffer was too small
-                buffer.reserve(1000);
-                buffer.set_len(1000);
+                buffer.resize(1000, b'\0');
                 let ret_code = rados_ioctx_get_pool_name(
                     self.ioctx,
                     buffer.as_mut_ptr() as *mut c_char,
@@ -644,12 +620,16 @@ impl IoCtx {
                 if ret_code < 0 {
                     return Err(ret_code.into());
                 }
-                Ok(String::from_utf8_lossy(&buffer).into_owned())
+                Ok(CStr::from_ptr(buffer.as_ptr() as *const c_char)
+                    .to_string_lossy()
+                    .into_owned())
             } else if ret_code < 0 {
                 Err(ret_code.into())
             } else {
-                buffer.set_len(ret_code as usize);
-                Ok(String::from_utf8_lossy(&buffer).into_owned())
+                buffer.truncate(ret_code as usize + 1);
+                Ok(CStr::from_ptr(buffer.as_ptr() as *const c_char)
+                    .to_string_lossy()
+                    .into_owned())
             }
         }
     }
@@ -945,40 +925,6 @@ impl IoCtx {
         Ok(())
     }
 
-    /// Efficiently copy a portion of one object to another
-    /// If the underlying filesystem on the OSD supports it, this will be a
-    /// copy-on-write clone.
-    /// The src and dest objects must be in the same pg. To ensure this, the io
-    /// context should
-    /// have a locator key set (see rados_ioctx_locator_set_key()).
-    pub fn rados_object_clone_range(
-        &self,
-        dst_object_name: &str,
-        dst_offset: u64,
-        src_object_name: &str,
-        src_offset: u64,
-        length: usize,
-    ) -> RadosResult<()> {
-        self.ioctx_guard()?;
-        let dst_name_str = CString::new(dst_object_name)?;
-        let src_name_str = CString::new(src_object_name)?;
-
-        unsafe {
-            let ret_code = rados_clone_range(
-                self.ioctx,
-                dst_name_str.as_ptr(),
-                dst_offset,
-                src_name_str.as_ptr(),
-                src_offset,
-                length,
-            );
-            if ret_code < 0 {
-                return Err(ret_code.into());
-            }
-        }
-        Ok(())
-    }
-
     /// Append len bytes from buf into the oid object.
     pub fn rados_object_append(&self, object_name: &str, buffer: &[u8]) -> RadosResult<()> {
         self.ioctx_guard()?;
@@ -1028,6 +974,9 @@ impl IoCtx {
             );
             if ret_code < 0 {
                 return Err(ret_code.into());
+            }
+            if ret_code as usize >= len {
+                fill_buffer.reserve(ret_code as usize - len + 1);
             }
             fill_buffer.set_len(ret_code as usize);
             Ok(ret_code)
@@ -1172,74 +1121,6 @@ impl IoCtx {
         Ok((psize, (UNIX_EPOCH + Duration::from_secs(time as u64))))
     }
 
-    /// Update tmap (trivial map)
-    pub fn rados_object_tmap_update(
-        &self,
-        object_name: &str,
-        update: TmapOperation,
-    ) -> RadosResult<()> {
-        self.ioctx_guard()?;
-        let object_name_str = CString::new(object_name)?;
-        let buffer = update.serialize()?;
-        unsafe {
-            let ret_code = rados_tmap_update(
-                self.ioctx,
-                object_name_str.as_ptr(),
-                buffer.as_ptr() as *const c_char,
-                buffer.len(),
-            );
-            if ret_code < 0 {
-                return Err(ret_code.into());
-            }
-        }
-        Ok(())
-    }
-
-    /// Fetch complete tmap (trivial map) object
-    pub fn rados_object_tmap_get(&self, object_name: &str) -> RadosResult<Vec<TmapOperation>> {
-        self.ioctx_guard()?;
-        let object_name_str = CString::new(object_name)?;
-        let mut buffer: Vec<u8> = Vec::with_capacity(500);
-
-        unsafe {
-            let ret_code = rados_tmap_get(
-                self.ioctx,
-                object_name_str.as_ptr(),
-                buffer.as_mut_ptr() as *mut c_char,
-                buffer.capacity(),
-            );
-            if ret_code == -ERANGE {
-                buffer.reserve(1000);
-                buffer.set_len(1000);
-                let ret_code = rados_tmap_get(
-                    self.ioctx,
-                    object_name_str.as_ptr(),
-                    buffer.as_mut_ptr() as *mut c_char,
-                    buffer.capacity(),
-                );
-                if ret_code < 0 {
-                    return Err(ret_code.into());
-                }
-            } else if ret_code < 0 {
-                return Err(ret_code.into());
-            }
-        }
-        match TmapOperation::deserialize(&buffer) {
-            Ok((_, tmap)) => Ok(tmap),
-            Err(nom::Err::Incomplete(needed)) => Err(RadosError::new(format!(
-                "deserialize of ceph tmap failed.
-            Input from Ceph was too small.  Needed: {:?} more bytes",
-                needed
-            ))),
-            Err(nom::Err::Error(e)) => Err(RadosError::new(
-                String::from_utf8_lossy(e.input).to_string(),
-            )),
-            Err(nom::Err::Failure(e)) => Err(RadosError::new(
-                String::from_utf8_lossy(e.input).to_string(),
-            )),
-        }
-    }
-
     /// Execute an OSD class method on an object
     /// The OSD has a plugin mechanism for performing complicated operations on
     /// an object atomically.
@@ -1282,35 +1163,35 @@ impl IoCtx {
     /// Sychronously notify watchers of an object
     /// This blocks until all watchers of the object have received and reacted
     /// to the notify, or a timeout is reached.
-    pub fn rados_object_notify(&self, object_name: &str, data: &[u8]) -> RadosResult<()> {
+    pub fn rados_object_notify(
+        &self,
+        object_name: &str,
+        data: &[u8],
+    ) -> RadosResult<NotifyResponse> {
         self.ioctx_guard()?;
         let object_name_str = CString::new(object_name)?;
 
+        let reply_buffer: *mut *mut c_char = std::ptr::null_mut();
+        let reply_buffer_len: *mut size_t = std::ptr::null_mut();
+
         unsafe {
-            let ret_code = rados_notify(
+            let ret_code = rados_notify2(
                 self.ioctx,
                 object_name_str.as_ptr(),
-                0,
                 data.as_ptr() as *const c_char,
                 data.len() as i32,
+                0,
+                reply_buffer,
+                reply_buffer_len,
             );
             if ret_code < 0 {
                 return Err(ret_code.into());
             }
+
+            NotifyResponse::parse_from_ptr(reply_buffer as *mut u8, *reply_buffer_len)
         }
-        Ok(())
     }
-    // pub fn rados_object_notify2(ctx: rados_ioctx_t, object_name: &str) ->
-    // RadosResult<()> {
-    // if ctx.is_null() {
-    // return Err(RadosError::new("Rados ioctx not created.  Please initialize
-    // first".to_string()));
-    // }
-    //
-    // unsafe {
-    // }
-    // }
-    //
+
     /// Acknolwedge receipt of a notify
     pub fn rados_object_notify_ack(
         &self,
@@ -1453,6 +1334,7 @@ impl IoCtx {
     }
 
     /// Take a shared lock on an object.
+    #[allow(clippy::too_many_arguments)]
     pub fn rados_object_lock_shared(
         &self,
         object_name: &str,
@@ -1591,11 +1473,11 @@ impl IoCtx {
 }
 
 impl Rados {
-    pub fn rados_blacklist_client(&self, client: IpAddr, expire_seconds: u32) -> RadosResult<()> {
+    pub fn rados_blocklist_client(&self, client: IpAddr, expire_seconds: u32) -> RadosResult<()> {
         self.conn_guard()?;
         let client_address = CString::new(client.to_string())?;
         unsafe {
-            let ret_code = rados_blacklist_add(
+            let ret_code = rados_blocklist_add(
                 self.rados,
                 client_address.as_ptr() as *mut c_char,
                 expire_seconds,
@@ -1633,7 +1515,7 @@ impl Rados {
             );
             if len > pool_buffer.capacity() as i32 {
                 // rados_pool_list requires more buffer than we gave it
-                pool_buffer.reserve(len as usize);
+                pool_buffer.resize(len as usize, 0);
                 let len = rados_pool_list(
                     self.rados,
                     pool_buffer.as_mut_ptr() as *mut c_char,
@@ -1723,8 +1605,7 @@ impl Rados {
             );
             if ret_code == -ERANGE {
                 // Buffer was too small
-                buffer.reserve(1000);
-                buffer.set_len(1000);
+                buffer.resize(1000, b'\0');
                 let ret_code = rados_pool_reverse_lookup(
                     self.rados,
                     pool_id,
@@ -1843,7 +1724,7 @@ impl Rados {
 pub fn ceph_version(socket: &str) -> Option<String> {
     let cmd = "version";
 
-    admin_socket_command(&cmd, socket).ok().and_then(|json| {
+    admin_socket_command(cmd, socket).ok().and_then(|json| {
         json_data(&json)
             .and_then(|jsondata| json_find(jsondata, &[cmd]).map(|data| json_as_string(&data)))
     })
@@ -2020,7 +1901,7 @@ impl Rados {
                 &mut cmds.as_ptr(),
                 1,
                 data.as_ptr() as *mut c_char,
-                data.len() as usize,
+                data.len(),
                 &mut outbuf,
                 &mut outbuf_len,
                 &mut outs,
@@ -2038,13 +1919,13 @@ impl Rados {
 
             // Copy the data from outbuf and then call rados_buffer_free instead libc::free
             if outbuf_len > 0 && !outbuf.is_null() {
-                let slice = ::std::slice::from_raw_parts(outbuf as *const u8, outbuf_len as usize);
+                let slice = ::std::slice::from_raw_parts(outbuf as *const u8, outbuf_len);
                 out = slice.to_vec();
 
                 rados_buffer_free(outbuf);
             }
             if outs_len > 0 && !outs.is_null() {
-                let slice = ::std::slice::from_raw_parts(outs as *const u8, outs_len as usize);
+                let slice = ::std::slice::from_raw_parts(outs as *const u8, outs_len);
                 status_string = Some(String::from_utf8(slice.to_vec())?);
                 rados_buffer_free(outs);
             }

@@ -1,14 +1,14 @@
 use std::collections::HashMap;
-
-use crate::ceph::{connect_to_ceph, Rados};
-use crate::cmd;
-use crate::rados;
-
-use libc::c_char;
 use std::ffi::CString;
 use std::{ptr, str};
 
+use libc::c_char;
+use tracing::debug;
+
+use crate::ceph::{Rados, connect_to_ceph};
+use crate::cmd;
 use crate::error::RadosError;
+use crate::rados;
 use crate::{CephVersion, MonCommand, OsdOption, PoolOption};
 
 /// A CephClient is a struct that handles communicating with Ceph
@@ -46,14 +46,8 @@ impl CephClient {
         user_id: T1,
         config_file: T2,
     ) -> Result<CephClient, RadosError> {
-        let rados_t = match connect_to_ceph(user_id.as_ref(), config_file.as_ref()) {
-            Ok(rados_t) => rados_t,
-            Err(e) => return Err(e),
-        };
-        let version: CephVersion = match cmd::version(&rados_t)?.parse() {
-            Ok(v) => v,
-            Err(e) => return Err(e),
-        };
+        let rados_t = connect_to_ceph(user_id.as_ref(), config_file.as_ref())?;
+        let version: CephVersion = cmd::version(&rados_t)?.parse()?;
 
         Ok(CephClient {
             rados_t,
@@ -104,7 +98,7 @@ impl CephClient {
                     return Err(RadosError::Error(format!(
                         "Unable to parse osd pool get output: {:?}",
                         result,
-                    )))
+                    )));
                 }
             }
         }

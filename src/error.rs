@@ -11,19 +11,17 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-extern crate serde_json;
-
-use crate::ceph_version::CephVersion;
-use serde_json::error::Error as SerdeJsonError;
 use std::error::Error as StdError;
 use std::ffi::{IntoStringError, NulError};
 use std::io::Error;
 use std::num::ParseIntError;
 use std::string::FromUtf8Error;
 use std::{fmt, str::ParseBoolError};
+
+use serde_json::error::Error as SerdeJsonError;
 use uuid::Error as UuidError;
 
-extern crate nix;
+use crate::ceph_version::CephVersion;
 
 pub use nix::errno::Errno;
 

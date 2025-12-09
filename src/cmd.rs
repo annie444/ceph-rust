@@ -5,15 +5,18 @@
 //! same calls without having to shell out with std::process::Command.
 //! Many of the commands defined in this file have a simulate parameter to
 //! allow you to test without actually calling Ceph.
-extern crate serde_json;
-
-use crate::ceph::Rados;
-use crate::error::{RadosError, RadosResult};
-use crate::CephVersion;
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
+
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use tracing::trace;
 use uuid::Uuid;
+
+use crate::CephVersion;
+use crate::ceph::Rados;
+use crate::error::{RadosError, RadosResult};
 
 #[derive(Deserialize, Debug)]
 pub struct CephMon {
@@ -92,6 +95,7 @@ pub enum ObjectStoreType {
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged, rename_all = "lowercase")]
+#[allow(clippy::large_enum_variant)]
 pub enum ObjectStoreMeta {
     Bluestore {
         bluefs: String,
@@ -976,14 +980,14 @@ pub enum CrushNodeStatus {
     Destroyed,
 }
 
-impl CrushNodeStatus {
-    pub fn to_string(&self) -> String {
+impl std::fmt::Display for CrushNodeStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CrushNodeStatus::Up => "up".to_string(),
-            CrushNodeStatus::Down => "down".to_string(),
-            CrushNodeStatus::In => "in".to_string(),
-            CrushNodeStatus::Out => "out".to_string(),
-            CrushNodeStatus::Destroyed => "destroyed".to_string(),
+            CrushNodeStatus::Up => write!(f, "up"),
+            CrushNodeStatus::Down => write!(f, "down"),
+            CrushNodeStatus::In => write!(f, "in"),
+            CrushNodeStatus::Out => write!(f, "out"),
+            CrushNodeStatus::Destroyed => write!(f, "destroyed"),
         }
     }
 }

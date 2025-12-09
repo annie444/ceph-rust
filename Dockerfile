@@ -1,9 +1,9 @@
-FROM buildpack-deps:focal
+FROM buildpack-deps:trixie
 
-ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.46.0
+ENV RUSTUP_HOME="/usr/local/rustup" \
+    CARGO_HOME="/usr/local/cargo" \
+    PATH="/usr/local/cargo/bin:$PATH" \
+    RUST_VERSION="1.91.1"
 
 RUN set -eux; \
     dpkgArch="$(dpkg --print-architecture)"; \
@@ -14,9 +14,9 @@ RUN set -eux; \
         i386) rustArch='i686-unknown-linux-gnu';; \
         *) echo >&2 "unsupported architecture: ${dpkgArch}"; exit 1 ;; \
     esac; \
-    url="https://static.rust-lang.org/rustup/archive/1.22.1/${rustArch}/rustup-init"; \
-    wget "$url"; \
-    wget "$url.sha256"; \
+    url="https://static.rust-lang.org/rustup/archive/1.28.2/${rustArch}/rustup-init"; \
+    wget --progress=dot:giga "$url"; \
+    wget --progress=dot:giga "$url.sha256"; \
     sed -i 's/target.*/rustup-init/g' rustup-init.sha256; \
     sha256sum -c rustup-init.sha256; \
     chmod +x rustup-init; \
@@ -30,7 +30,7 @@ RUN set -eux; \
 RUN apt-get update \
     && apt-get install apt-transport-https \
     && wget -q -O- 'https://download.ceph.com/keys/release.asc' | apt-key add - \
-    && echo "deb https://download.ceph.com/debian-octopus/ focal main" > /etc/apt/sources.list.d/ceph.list \
+    && echo "deb https://download.ceph.com/debian-tentacle/ trixie main" > /etc/apt/sources.list.d/ceph.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         uuid-runtime \
@@ -38,7 +38,7 @@ RUN apt-get update \
         librados-dev libradosstriper-dev
 
 # update crates.io index
-RUN cargo search --limit 0
+RUN cargo search --limit 1
 
 WORKDIR /ceph-rust
 

@@ -23,9 +23,7 @@
 #![allow(non_camel_case_types)]
 #![allow(unused_imports)]
 
-extern crate libc;
-
-use self::libc::{size_t, ssize_t, time_t, timeval};
+use libc::{size_t, ssize_t, time_t, timeval};
 
 use super::rados::{rados_callback_t, rados_completion_t, rados_ioctx_t, rados_xattrs_iter_t};
 
@@ -35,8 +33,7 @@ pub type rados_striper_multi_completion_t = *mut ::std::os::raw::c_void;
 
 #[cfg(unix)]
 #[cfg(feature = "rados_striper")]
-#[link(name = "radosstriper", kind = "dylib")]
-extern "C" {
+unsafe extern "C" {
     pub fn rados_striper_create(
         ioctx: rados_ioctx_t,
         striper: *mut rados_striper_t,

@@ -14,8 +14,6 @@
 
 use std::str;
 
-use serde_json;
-
 use crate::JsonData;
 // use JsonValue;
 
@@ -23,10 +21,7 @@ use crate::JsonData;
 /// JsonData object that can then be traversed using `json_find` via the key
 /// path.
 pub fn json_data(json_str: &str) -> Option<JsonData> {
-    match serde_json::from_str(json_str) {
-        Ok(json_data) => Some(json_data),
-        Err(_) => None,
-    }
+    serde_json::from_str(json_str).ok()
 }
 
 /// Looks for the parent object first and then the 'child' object. If the

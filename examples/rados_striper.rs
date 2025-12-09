@@ -17,6 +17,7 @@ fn main() {
     let pool_name = "ceph-rust-test";
 
     println!("Connecting to ceph");
+    #[allow(clippy::arc_with_non_send_sync)]
     let cluster = Arc::new(ceph_helpers::connect_to_ceph(user_id, &config_file).unwrap());
 
     println!("Creating pool {}", pool_name);

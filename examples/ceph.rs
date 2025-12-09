@@ -17,13 +17,13 @@
 extern crate ceph;
 extern crate libc;
 
+use ceph::JsonData;
 #[cfg(unix)]
 use ceph::admin_sockets::*;
 #[cfg(unix)]
 use ceph::ceph as ceph_helpers;
 #[cfg(unix)]
 use ceph::rados;
-use ceph::JsonData;
 
 #[cfg(not(unix))]
 fn main() {}
@@ -89,13 +89,11 @@ fn main() {
     // Mon command to check the health. Same as `ceph -s`
     match cluster.ceph_mon_command("prefix", "status", None) {
         Ok((outbuf, outs)) => {
-            match outbuf {
-                Some(output) => println!("Ceph mon command (outbuf):\n{}", output),
-                None => {}
+            if let Some(output) = outbuf {
+                println!("Ceph mon command (outbuf):\n{}", output);
             }
-            match outs {
-                Some(output) => println!("Ceph mon command (outs):\n{}", output),
-                None => {}
+            if let Some(output) = outs {
+                println!("Ceph mon command (outs):\n{}", output);
             }
         }
         Err(e) => {
@@ -125,7 +123,7 @@ fn main() {
     }
 
     let fsid = cluster.rados_fsid().unwrap();
-    println!("rados_cluster_fsid: {}", fsid.to_hyphenated().to_string());
+    println!("rados_cluster_fsid: {}", fsid.as_hyphenated());
 
     let ping_monitor = cluster.ping_monitor("ceph-mon.ceph-vm1"); // Change to support your mon name
     println!("Ping monitor: {:?}", ping_monitor);
@@ -137,13 +135,11 @@ fn main() {
     // Mon command to check the health. Same as `ceph -s`
     match cluster.ceph_mon_command("prefix", "status", None) {
         Ok((outbuf, outs)) => {
-            match outbuf {
-                Some(output) => println!("Ceph mon command (outbuf):\n{}", output),
-                None => {}
+            if let Some(output) = outbuf {
+                println!("Ceph mon command (outbuf):\n{}", output);
             }
-            match outs {
-                Some(output) => println!("Ceph mon command (outs):\n{}", output),
-                None => {}
+            if let Some(output) = outs {
+                println!("Ceph mon command (outs):\n{}", output);
             }
         }
         Err(e) => {
