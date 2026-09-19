@@ -5,7 +5,7 @@ use std::{ptr, str};
 use libc::c_char;
 use tracing::debug;
 
-use crate::ceph::{Rados, connect_to_ceph};
+use crate::ceph::{connect_to_ceph, Rados};
 use crate::cmd;
 use crate::error::RadosError;
 use crate::rados;

@@ -1,75 +1,87 @@
 name: CI
 
 on:
-  pull_request:
-    branches:
-      - master
-  push:
-    branches:
-      - master
+    pull_request:
+        branches:
+            - master
+    push:
+        branches:
+            - master
 
 env:
-  RUSTFLAGS: -Dwarnings
+    RUSTFLAGS: -Dwarnings
 
 jobs:
-  build_and_test:
-    name: Build and test
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        rust: [nightly, beta, stable]
+    build_and_test:
+        name: Build and test
+        runs-on: ${{ matrix.os }}
+        strategy:
+            matrix:
+                os: [ubuntu-latest]
+                rust: [nightly, beta, stable]
 
-    steps:
-    - uses: actions/checkout@v4
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v7
 
-    - name: Install ${{ matrix.rust }}
-      run: rustup install ${{ matrix.rust }}
+            - name: Install rust ${{ matrix.rust }}
+              uses: actions-rust-lang/setup-rust-toolchain@v2
+              with:
+                  toolchain: "${{ matrix.rust }}"
 
-    - name: Install Ceph
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y apt-transport-https
-        wget -q -O- 'https://download.ceph.com/keys/release.asc' | sudo apt-key add -
-        echo "deb https://download.ceph.com/debian-octopus/ focal main" | sudo tee /etc/apt/sources.list.d/ceph.list
-        sudo apt-get update -y 
-        sudo apt-get install -y --no-install-recommends uuid-runtime ceph-mgr ceph-mon ceph-osd ceph-mds librados-dev libradosstriper-dev
+            - name: Install Ceph
+              run: |
+                  sudo apt-get update -y
+                  sudo apt-get install -y cephadm
+                  sudo cephadm add-repo --release tentacle
+                  sudo apt-get install -y --no-install-recommends uuid-runtime ceph-mgr ceph-mon ceph-osd ceph-mds librados-dev libradosstriper-dev
 
-    - name: check
-      run: cargo check --all-targets
+            - name: check
+              run: cargo clippy --all-targets -- -Dwarnings
 
-    - name: check rados_striper
-      run: cargo check --features rados_striper --all-targets
+            - name: check rados_striper
+              run: cargo clippy --features rados_striper --all-targets -- -Dwarnings
 
-    - name: tests
-      run: cargo test --all-targets
+            - name: tests
+              run: cargo test --all-targets --all-features
 
-  cross:
-    name: Cross compile
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target:
-          - i686-unknown-linux-gnu
-          - armv7-unknown-linux-gnueabihf
-          - aarch64-unknown-linux-gnu
+    cross:
+        name: Cross compile
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                target:
+                    - i686-unknown-linux-gnu
+                    - armv7-unknown-linux-gnueabihf
+                    - aarch64-unknown-linux-gnu
 
-    steps:
-    - uses: actions/checkout@v4
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v7
 
-    - name: Install nightly
-      run: rustup install nightly
+            - name: Install rust
+              uses: actions-rust-lang/setup-rust-toolchain@v2
+              with:
+                  toolchain: stable
+                  target: "${{ matrix.target }}"
 
-    - name: Install cross
-      run: cargo install cross
+            - name: Install cross
+              run: cargo install cross --git https://github.com/cross-rs/cross
 
-    - name: check
-      run: cross check --all --target ${{ matrix.target }}
+            - name: check
+              run: cross clippy --all-targets --target ${{ matrix.target }}
 
-  check_fmt_and_docs:
-    name: Checking fmt and docs
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - name: fmt
-      run: cargo fmt --all -- --check
+    check_fmt_and_docs:
+        name: Checking fmt and docs
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v7
+
+            - name: Install rust
+              uses: actions-rust-lang/setup-rust-toolchain@v2
+              with:
+                  toolchain: stable
+
+            - name: fmt
+              run: cargo fmt --all -- --check
