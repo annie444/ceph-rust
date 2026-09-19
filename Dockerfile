@@ -3,7 +3,7 @@ FROM docker.io/library/buildpack-deps:bookworm
 ENV RUSTUP_HOME="/usr/local/rustup" \
     CARGO_HOME="/usr/local/cargo" \
     PATH="/usr/local/cargo/bin:$PATH" \
-    RUST_VERSION="1.97.1"
+    RUST_VERSION="stable"
 
 RUN set -eux; \
     dpkgArch="$(dpkg --print-architecture)"; \

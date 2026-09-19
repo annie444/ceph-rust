@@ -28,6 +28,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           toolchain: "${{ matrix.rust }}"
+          components: clippy
 
       - name: Install Ceph
         run: |
@@ -65,6 +66,7 @@ jobs:
         with:
           toolchain: stable
           target: "${{ matrix.target }}"
+          components: clippy
 
       - name: Install cross
         run: cargo install cross --git https://github.com/cross-rs/cross
@@ -83,6 +85,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           toolchain: stable
+          components: rustfmt
 
       - name: fmt
         run: cargo fmt --all -- --check
