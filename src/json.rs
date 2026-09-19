@@ -31,12 +31,8 @@ pub fn json_data(json_str: &str) -> Option<JsonData> {
 pub fn json_find(json_data: JsonData, keys: &[&str]) -> Option<JsonData> {
     let mut value = json_data;
     for key in keys {
-        match value.get(key) {
-            Some(v) => value = v.clone(),
-            None => return None,
-        }
+        value = value.get(key).cloned()?;
     }
-
     Some(value)
 }
 
