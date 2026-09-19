@@ -335,6 +335,9 @@ impl Iterator for XAttr {
                 // value string
                 let s_bytes = std::slice::from_raw_parts(value, val_length);
                 // Convert from i8 -> u8
+                #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "gnu"))]
+                let bytes: Vec<u8> = s_bytes.iter().map(|c| *c).collect();
+                #[cfg(not(all(target_arch = "arm", target_os = "linux", target_env = "gnu")))]
                 let bytes: Vec<u8> = s_bytes.iter().map(|c| *c as u8).collect();
                 Some(XAttr {
                     name: name.to_string_lossy().into_owned(),
@@ -1705,6 +1708,9 @@ impl Rados {
                 // valid string
                 let s_bytes = std::slice::from_raw_parts(out_str, str_length);
                 // Convert from i8 -> u8
+                #[cfg(all(target_arch = "arm", target_os = "linux", target_env = "gnu"))]
+                let bytes: Vec<u8> = s_bytes.iter().map(|c| *c).collect();
+                #[cfg(not(all(target_arch = "arm", target_os = "linux", target_env = "gnu")))]
                 let bytes: Vec<u8> = s_bytes.iter().map(|c| *c as u8).collect();
                 // Tell rados we're done with this buffer
                 rados_buffer_free(out_str);
