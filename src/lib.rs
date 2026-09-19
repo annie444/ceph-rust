@@ -26,28 +26,35 @@
 //!
 //! Only works on Linux
 //! The documentation for librados can be found:
-//! http://docs.ceph.com/docs/master/rados/api/librados/
+//! <http://docs.ceph.com/docs/master/rados/api/librados/>
 //!
 //! By default Ceph names librados as the following for the given platforms:
 //! Hammer release:
 //! RHEL/CentOS:
+//! ```bash
 //! /usr/lib64/librados.so.2.0.0
+//! ```
 //!
 //! Ubuntu:
+//! ```bash
 //! /usr/lib/librados.so.2.0.0
+//! ```
 //!
 //! You will need to do a symlink of the above link to the following:
 //! RHEL/CentOS:
+//! ```bash
 //! sudo ln -s /usr/lib64/librados.so.2.0.0 /usr/lib64/librados.so
+//! ```
 //!
 //! Ubuntu:
+//! ```bash
 //! sudo ln -s /usr/lib/librados.so.2.0.0 /usr/lib/librados.so
+//! ```
 //!
 //! NOTE: If someone know of another way for Rust to find the librados file
-//! then please issue
-//! a PR for it. Thanks!
+//! then please issue a PR for it. Thanks!
 //!
-//! See the /examples/ceph.rs for how to use the library.
+//! See the [examples/ceph.rs](../examples/ceph.rs) for how to use the library.
 
 pub mod admin_sockets;
 pub mod ceph;

@@ -1,8 +1,8 @@
 //! Ceph has a command system defined
-//! in https://github.com/ceph/ceph/blob/master/src/mon/MonCommands.h
+//! in <https://github.com/ceph/ceph/blob/master/src/mon/MonCommands.h>
 //! The cli commands mostly use this json based system.  This allows you to
 //! make the exact
-//! same calls without having to shell out with std::process::Command.
+//! same calls without having to shell out with [`std::process::Command`].
 //! Many of the commands defined in this file have a simulate parameter to
 //! allow you to test without actually calling Ceph.
 use std::collections::HashMap;

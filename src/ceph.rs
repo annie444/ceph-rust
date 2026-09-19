@@ -566,7 +566,7 @@ impl IoCtx {
         }
         Ok(())
     }
-    /// Note: Ceph uses kibibytes: https://en.wikipedia.org/wiki/Kibibyte
+    /// Note: Ceph uses kibibytes: <https://en.wikipedia.org/wiki/Kibibyte>
     pub fn rados_stat_pool(&self) -> RadosResult<Struct_rados_pool_stat_t> {
         self.ioctx_guard()?;
         let mut pool_stat = Struct_rados_pool_stat_t::default();
@@ -1495,14 +1495,14 @@ impl Rados {
 
     /// Returns back a collection of Rados Pools
     ///
-    /// pool_buffer should be allocated with:
+    /// `pool_buffer` should be allocated with:
     /// ```
     /// let capacity = 10;
     /// let pool_buffer: Vec<u8> = Vec::with_capacity(capacity);
     /// ```
-    /// buf_size should be the value used with_capacity
+    /// `buf_size` should be the value used `with_capacity`
     ///
-    /// Returns Ok(Vec<String>) - A list of Strings of the pool names.
+    /// Returns `Ok(Vec<String>)` - A list of Strings of the pool names.
     #[allow(unused_variables)]
     pub fn rados_pools(&self) -> RadosResult<Vec<String>> {
         self.conn_guard()?;
@@ -1649,7 +1649,7 @@ impl Rados {
     /// objects.
     /// These are not updated immediately when data is written, they are
     /// eventually consistent.
-    /// Note: Ceph uses kibibytes: https://en.wikipedia.org/wiki/Kibibyte
+    /// Note: Ceph uses kibibytes: <https://en.wikipedia.org/wiki/Kibibyte>
     pub fn rados_stat_cluster(&self) -> RadosResult<Struct_rados_cluster_stat_t> {
         self.conn_guard()?;
         let mut cluster_stat = Struct_rados_cluster_stat_t::default();

@@ -249,9 +249,9 @@ unsafe extern "C" {
      * not filled in.
      *
      * @param cluster         cluster handle
-     * @param mon_id [in]     ID of the monitor to ping
-     * @param outstr [out]    double pointer with the resulting reply
-     * @param outstrlen [out] pointer with the size of the reply in outstr
+     * @param mon_id \[in\]     ID of the monitor to ping
+     * @param outstr \[out\]    double pointer with the resulting reply
+     * @param outstrlen \[out\] pointer with the size of the reply in outstr
      */
     pub fn rados_ping_monitor(
         cluster: rados_t,
@@ -643,7 +643,7 @@ unsafe extern "C" {
      *
      * @param cluster the cluster the pool is in
      * @param pool ID of the pool to query
-     * @param base_tier [out] base tier, or \c pool if tiering is not configured
+     * @param base_tier \[out\] base tier, or \c pool if tiering is not configured
      * @returns 0 on success, negative error code on failure
      */
     pub fn rados_pool_get_base_tier(
