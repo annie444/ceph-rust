@@ -336,7 +336,7 @@ impl Iterator for XAttr {
                 let s_bytes = std::slice::from_raw_parts(value, val_length);
                 // Convert from i8 -> u8
                 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-                let bytes: Vec<u8> = s_bytes.iter().copied().collect();
+                let bytes: Vec<u8> = s_bytes.to_vec();
                 #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
                 let bytes: Vec<u8> = s_bytes.iter().map(|c| *c as u8).collect();
                 Some(XAttr {
@@ -1709,7 +1709,7 @@ impl Rados {
                 let s_bytes = std::slice::from_raw_parts(out_str, str_length);
                 // Convert from i8 -> u8
                 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-                let bytes: Vec<u8> = s_bytes.iter().copied().collect();
+                let bytes: Vec<u8> = s_bytes.to_vec();
                 #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
                 let bytes: Vec<u8> = s_bytes.iter().map(|c| *c as u8).collect();
                 // Tell rados we're done with this buffer
